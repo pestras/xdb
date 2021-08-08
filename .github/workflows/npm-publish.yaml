@@ -28,6 +28,11 @@ jobs:
 
       - name: Compile Typescript
         run: npx tsc
+
+      - name: Creating .npmrc file
+        run: mv .npmrc-dev .npmrc
       
       - name: Publish Package
         run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
