@@ -1,0 +1,26 @@
+{
+  "name": "@pestras/xdb",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pestras/xdb.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pestras/xdb/issues"
+  },
+  "homepage": "https://github.com/pestras/xdb#readme",
+  "devDependencies": {
+    "typescript": "^4.3.5"
+  },
+  "dependencies": {
+    "rxjs": "^7.3.0"
+  }
+}
