@@ -7,3 +7,4 @@ npm-debug.log
 *.map.js
 TODO.md
 test
+.npmrc-dev

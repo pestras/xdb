@@ -12,8 +12,6 @@ export declare abstract class XDB {
      * @param _v [number?] Database version, defaults to 1
      */
     constructor(name: string, _v?: number);
-    /** Map includes created stores */
-    protected _stores: Map<string, Store<any> | ListStore<any>>;
     /** Db status behavior subject */
     protected _openSub: BehaviorSubject<boolean>;
     /** Current db instance */
@@ -37,7 +35,7 @@ export declare abstract class XDB {
     /** Drop database */
     protected drop(): Observable<void>;
     /** Update database version */
-    protected updateVersion(val: number): Observable<void>;
+    protected updateVersion(val: number): Observable<any>;
     /**
      * Create new object store
      * @param name [string] Store name
@@ -107,7 +105,7 @@ export declare class Store<T = any> {
      * @param key [IDBValidKey] key name
      * @returns Observable\<U\>
      */
-    get<U = T>(key: IDBValidKey): Observable<T>;
+    get<U = T>(key: IDBValidKey): Observable<any>;
     /**
      * Update key value
      * @param key [IDBValidKey] key name

@@ -1,6 +1,6 @@
 {
   "name": "@pestras/xdb",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -21,6 +21,6 @@
     "typescript": "^4.3.5"
   },
   "dependencies": {
-    "rxjs": "^7.3.0"
+    "rxjs": "^6.6.0"
   }
 }

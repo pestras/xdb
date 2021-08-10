@@ -3,7 +3,8 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-import { BehaviorSubject, distinctUntilChanged, EMPTY, filter, forkJoin, Observable, of, switchMap, throwError } from "rxjs";
+import { BehaviorSubject, EMPTY, forkJoin, Observable, of, throwError } from "rxjs";
+import { distinctUntilChanged, filter, switchMap } from 'rxjs/operators';
 
 /**
  * XDB create new database instance, manages connections status,
@@ -37,8 +38,6 @@ export abstract class XDB {
 
   // Protected Members
   // ---------------------------------------------------------------------------
-  /** Map includes created stores */
-  protected _stores = new Map<string, Store | ListStore<any>>();
   /** Db status behavior subject */
   protected _openSub = new BehaviorSubject(false);
   /** Current db instance */

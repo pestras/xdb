@@ -2,7 +2,8 @@
 // 
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
-import { BehaviorSubject, distinctUntilChanged, EMPTY, filter, forkJoin, Observable, of, switchMap, throwError } from "rxjs";
+import { BehaviorSubject, EMPTY, forkJoin, Observable, of, throwError } from "rxjs";
+import { distinctUntilChanged, filter, switchMap } from 'rxjs/operators';
 /**
  * XDB create new database instance, manages connections status,
  * drop databases, creates stores
@@ -20,8 +21,6 @@ export class XDB {
         this._v = _v;
         // Protected Members
         // ---------------------------------------------------------------------------
-        /** Map includes created stores */
-        this._stores = new Map();
         /** Db status behavior subject */
         this._openSub = new BehaviorSubject(false);
         // Public Members
