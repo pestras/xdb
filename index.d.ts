@@ -13,7 +13,7 @@ export declare abstract class XDB {
      */
     constructor(name: string, _v?: number);
     /** Db status behavior subject */
-    protected _openSub: BehaviorSubject<boolean>;
+    protected _openSub: BehaviorSubject<any>;
     /** Current db instance */
     protected _db: IDBDatabase;
     /**
@@ -48,9 +48,9 @@ export declare abstract class XDB {
      */
     protected dropStore(name: string): void;
     /** Db status emitter */
-    readonly open$: Observable<boolean>;
+    readonly open$: Observable<any>;
     /** Db is open getter */
-    get isOpen(): boolean;
+    get isOpen(): any;
     /** Db current version getter */
     get version(): number;
     /**

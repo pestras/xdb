@@ -39,7 +39,7 @@ export abstract class XDB {
   // Protected Members
   // ---------------------------------------------------------------------------
   /** Db status behavior subject */
-  protected _openSub = new BehaviorSubject(false);
+  protected _openSub = new BehaviorSubject(null);
   /** Current db instance */
   protected _db: IDBDatabase;
 
@@ -158,7 +158,7 @@ export abstract class XDB {
   // Public Members
   // ---------------------------------------------------------------------------
   /** Db status emitter */
-  public readonly open$ = this._openSub.pipe(distinctUntilChanged());
+  public readonly open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
 
   /** Db is open getter */
   public get isOpen() { return this._openSub.getValue(); }

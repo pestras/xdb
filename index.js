@@ -22,11 +22,11 @@ export class XDB {
         // Protected Members
         // ---------------------------------------------------------------------------
         /** Db status behavior subject */
-        this._openSub = new BehaviorSubject(false);
+        this._openSub = new BehaviorSubject(null);
         // Public Members
         // ---------------------------------------------------------------------------
         /** Db status emitter */
-        this.open$ = this._openSub.pipe(distinctUntilChanged());
+        this.open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
         /** if indexedDb not supported throw error */
         if (!XDB.Supported) {
             this.onError(new Error('indexeddb not supported'));
