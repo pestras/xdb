@@ -263,12 +263,12 @@ export class Store<T = any> {
   /** Object store fields */
   protected _keys = new Set<IDBValidKey>();
   /** Object store ready status behavior subject */
-  protected _readySub = new BehaviorSubject<boolean>(false);
+  protected _readySub = new BehaviorSubject<boolean>(null);
 
   // Public members
   // ---------------------------------------------------------------------------
   /** Ready status emitter */
-  public readonly ready$ = this._readySub.pipe(distinctUntilChanged());
+  public readonly ready$ = this._readySub.pipe(filter(ready => typeof ready === 'boolean'), distinctUntilChanged());
 
   /** Ready status getter */
   public get ready() { return this._readySub.getValue(); }

@@ -212,11 +212,11 @@ export class Store {
         /** Object store fields */
         this._keys = new Set();
         /** Object store ready status behavior subject */
-        this._readySub = new BehaviorSubject(false);
+        this._readySub = new BehaviorSubject(null);
         // Public members
         // ---------------------------------------------------------------------------
         /** Ready status emitter */
-        this.ready$ = this._readySub.pipe(distinctUntilChanged());
+        this.ready$ = this._readySub.pipe(filter(ready => typeof ready === 'boolean'), distinctUntilChanged());
         this._db.open$
             .pipe(filter(open => open), switchMap(() => this._db.transaction([this.name], 'readonly')))
             .subscribe(trans => {
