@@ -160,6 +160,7 @@ export declare class ListStore<T> {
      * @returns [Observable]
      */
     updateMany(docs: Partial<T>[]): Observable<any>;
+    replaceAll(docs: Partial<T>[]): Observable<void>;
     /**
      * Delete value by key name
      * @param key [IDBValidKey] key name
@@ -172,4 +173,9 @@ export declare class ListStore<T> {
      * @returns [Observable]
      */
     deleteMany(keys: IDBValidKey[]): Observable<void>;
+    /**
+     * Clear store
+     * @returns [Observable]
+     */
+    clear(): Observable<void>;
 }

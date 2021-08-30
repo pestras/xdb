@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 import { BehaviorSubject, Observable } from "rxjs";
-import { distinctUntilChanged, filter } from 'rxjs/operators';
+import { distinctUntilChanged, filter, switchMap } from 'rxjs/operators';
 /**
  * XDB create new database instance, manages connections status,
  * drop databases, creates stores
@@ -422,6 +422,10 @@ export class ListStore {
             });
         });
     }
+    replaceAll(docs) {
+        return this.clear()
+            .pipe(switchMap(() => this.addMany(docs)));
+    }
     /**
      * Delete value by key name
      * @param key [IDBValidKey] key name
@@ -465,6 +469,28 @@ export class ListStore {
             });
             trans.addEventListener('error', () => {
                 subscriber.error(trans.error);
+                subscriber.complete();
+            });
+        });
+    }
+    /**
+     * Clear store
+     * @returns [Observable]
+     */
+    clear() {
+        return new Observable(subscriber => {
+            if (!this._db.isOpen) {
+                subscriber.error(new Error(`[${this.name} error]: cannot clear, db is closed`));
+                return subscriber.complete();
+            }
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let req = trans.objectStore(this.name).clear();
+            req.addEventListener('success', () => {
+                subscriber.next();
+                subscriber.complete();
+            });
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
                 subscriber.complete();
             });
         });

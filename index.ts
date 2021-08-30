@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-import { BehaviorSubject, EMPTY, forkJoin, Observable, of, throwError } from "rxjs";
+import { BehaviorSubject, EMPTY, forkJoin, Observable, of, Subscriber, throwError } from "rxjs";
 import { distinctUntilChanged, filter, map, switchMap } from 'rxjs/operators';
 
 /**
@@ -258,7 +258,7 @@ export class Store<T = any> {
         subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
         return subscriber.complete();
       }
-      
+
       let trans = this._db.transaction([this.name], 'readwrite');
       let os = trans.objectStore(this.name);
       let req = os.add(doc, this.name);
@@ -346,7 +346,7 @@ export class ListStore<T> {
     protected _db: XDB,
     public readonly name: string,
     public readonly keyPath: IDBValidKey
-  ) {}
+  ) { }
 
   /**
    * Get key value
@@ -412,7 +412,7 @@ export class ListStore<T> {
         subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
         return subscriber.complete();
       }
-      
+
       let trans = this._db.transaction([this.name], 'readwrite');
       let os = trans.objectStore(this.name);
       let req = os.add(doc, key);
@@ -516,6 +516,11 @@ export class ListStore<T> {
     });
   }
 
+  public replaceAll(docs: Partial<T>[]): Observable<void> {
+    return this.clear()
+      .pipe(switchMap(() => this.addMany(docs)));
+  }
+
   /**
    * Delete value by key name
    * @param key [IDBValidKey] key name
@@ -567,6 +572,32 @@ export class ListStore<T> {
 
       trans.addEventListener('error', () => {
         subscriber.error(trans.error);
+        subscriber.complete();
+      });
+    });
+  }
+
+  /**
+   * Clear store
+   * @returns [Observable]
+   */
+  public clear(): Observable<void> {
+    return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot clear, db is closed`));
+        return subscriber.complete();
+      }
+
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let req = trans.objectStore(this.name).clear();
+
+      req.addEventListener('success', () => {
+        subscriber.next();
+        subscriber.complete();
+      });
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
         subscriber.complete();
       });
     });
