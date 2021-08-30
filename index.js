@@ -2,8 +2,8 @@
 // 
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
-import { BehaviorSubject, EMPTY, forkJoin, Observable, of, throwError } from "rxjs";
-import { distinctUntilChanged, filter, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, of } from "rxjs";
+import { distinctUntilChanged, filter, map } from 'rxjs/operators';
 /**
  * XDB create new database instance, manages connections status,
  * drop databases, creates stores
@@ -23,8 +23,6 @@ export class XDB {
         // ---------------------------------------------------------------------------
         /** Db status behavior subject */
         this._openSub = new BehaviorSubject(null);
-        // Public Members
-        // ---------------------------------------------------------------------------
         /** Db status emitter */
         this.open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
         /** if indexedDb not supported throw error */
@@ -44,35 +42,24 @@ export class XDB {
     }
     /** Open Database connection */
     open() {
-        return new Observable(subscriber => {
-            if (this.isOpen) {
-                subscriber.next();
-                subscriber.complete();
-                return;
-            }
-            let req = indexedDB.open(this.name, this.version);
-            req.addEventListener('success', () => {
-                this._db = req.result;
-                this._openSub.next(true);
-                subscriber.next();
-                subscriber.complete();
-            });
-            req.addEventListener('error', () => {
-                this._openSub.next(false);
-                this.onError(req.error);
-                subscriber.error(req.error);
-                subscriber.complete();
-            });
-            req.addEventListener('blocked', () => {
-                this._openSub.next(false);
-                this.onBlock();
-                subscriber.error(new Error(`db ${self.name} is blocked`));
-                subscriber.complete();
-            });
-            req.addEventListener('upgradeneeded', (e) => {
-                this._db = req.result;
-                this.onUpgrade(e.oldVersion);
-            });
+        if (this.isOpen)
+            return;
+        let req = indexedDB.open(this.name, this.version);
+        req.addEventListener('success', () => {
+            this._db = req.result;
+            this._openSub.next(true);
+        });
+        req.addEventListener('error', () => {
+            this._openSub.next(false);
+            this.onError(req.error);
+        });
+        req.addEventListener('blocked', () => {
+            this._openSub.next(false);
+            this.onBlock();
+        });
+        req.addEventListener('upgradeneeded', (e) => {
+            this._db = req.result;
+            this.onUpgrade(e.oldVersion);
         });
     }
     /** Close db connection */
@@ -85,29 +72,25 @@ export class XDB {
     drop() {
         this.close();
         XDB.Connections.delete(this.name);
-        return new Observable(subscriber => {
-            let req = indexedDB.deleteDatabase(this.name);
-            req.addEventListener('success', () => {
-                subscriber.next();
-                subscriber.complete();
-            });
-            req.addEventListener('error', () => {
-                subscriber.error(req.error);
-                subscriber.complete();
-            });
+        let req = indexedDB.deleteDatabase(this.name);
+        req.addEventListener('success', () => {
+            this._openSub.next(false);
+        });
+        req.addEventListener('error', () => {
+            this.onError(req.error);
         });
     }
     /** Update database version */
     updateVersion(val) {
         if (this._v === val)
-            return of(null);
+            return;
         if (this.isOpen) {
             this.close();
             this._v = val;
             return this.open();
         }
         else {
-            return of(null);
+            return;
         }
     }
     /**
@@ -141,35 +124,12 @@ export class XDB {
      * Create new database transaction
      * @param storeNames
      * @param mode
-     * @returns [Observable<IDBTransaction>]
+     * @returns IDBTransaction
      */
     transaction(storeNames, mode) {
-        return this.isOpen ? of(this._db.transaction(storeNames, mode)) : throwError(new Error(`${this.name} db is closed`));
-    }
-    /** Database transaction complete pipe */
-    transComplete() {
-        return (source) => {
-            return new Observable(subscriber => {
-                return source.subscribe({
-                    next(trans) {
-                        trans.oncomplete = function () {
-                            subscriber.next();
-                            subscriber.complete();
-                        };
-                        trans.onerror = function () {
-                            subscriber.error(trans.error);
-                            subscriber.complete();
-                        };
-                        trans.onabort = function () {
-                            subscriber.error('aborted');
-                            subscriber.complete();
-                        };
-                    },
-                    error(err) { subscriber.error(err); subscriber.complete(); },
-                    complete() { subscriber.complete(); }
-                });
-            });
-        };
+        if (this.isOpen)
+            return this._db.transaction(storeNames, mode);
+        throw (new Error(`${this.name} db is closed`));
     }
     /** IndexedDb supported static getter */
     static get Supported() { return !!window.indexedDB; }
@@ -183,10 +143,10 @@ export class XDB {
     }
     /** Drop all databeses */
     static DropAll() {
-        let obs = [];
-        for (let db of XDB.Connections.values())
-            obs.push(db.drop());
-        return forkJoin(obs);
+        for (let [name, db] of XDB.Connections.entries()) {
+            db.drop();
+            XDB.Connections.delete(name);
+        }
     }
 }
 // Static Members
@@ -213,12 +173,13 @@ export class Store {
         this._keys = new Set();
         /** Object store ready status behavior subject */
         this._readySub = new BehaviorSubject(null);
+        /** Error listner  */
         // Public members
         // ---------------------------------------------------------------------------
         /** Ready status emitter */
         this.ready$ = this._readySub.pipe(filter(ready => typeof ready === 'boolean'), distinctUntilChanged());
         this._db.open$
-            .pipe(filter(open => open), switchMap(() => this._db.transaction([this.name], 'readonly')))
+            .pipe(filter(open => open), map(() => this._db.transaction([this.name], 'readonly')))
             .subscribe(trans => {
             let req = trans.objectStore(this.name).getAllKeys();
             req.addEventListener('success', () => {
@@ -226,7 +187,7 @@ export class Store {
                 this._readySub.next(true);
             });
             req.addEventListener('error', () => {
-                throw req.error;
+                this._db.onError(req.error);
             });
         });
     }
@@ -248,103 +209,94 @@ export class Store {
     get(key) {
         if (!this._keys.has(key))
             return of(null);
-        return this._db.transaction([this.name], 'readonly')
-            .pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                let req = trans.objectStore(this.name).get(key);
-                req.addEventListener('success', () => {
-                    subscriber.next(req.result);
-                    subscriber.complete();
-                });
-                req.addEventListener('error', () => {
-                    subscriber.error(req.error);
-                    subscriber.complete();
-                });
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readonly');
+            let req = trans.objectStore(this.name).get(key);
+            req.addEventListener('success', () => {
+                subscriber.next(req.result);
+                subscriber.complete();
             });
-        }));
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
-    update(key, doc, upsert = true, trans) {
+    /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @param upsert [boolean?] create if not exists
+     * @returns [Observable]
+     */
+    update(key, doc, upsert = true) {
         if (!upsert && !this._keys.has(key))
-            return EMPTY;
-        let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-        return trans$.pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                let os = trans.objectStore(this.name);
-                let req;
-                if (this.hasKey(key))
-                    req = os.put(doc, key);
-                else if (upsert)
-                    req = os.add(doc, key);
-                else {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                }
-                if (trans) {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                    return;
-                }
-                req.addEventListener('success', () => {
-                    this._keys.add(key);
-                    subscriber.next();
-                    subscriber.complete();
-                });
-                req.addEventListener('error', () => {
-                    subscriber.error(req.error);
-                    subscriber.complete();
-                });
+            return of();
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let os = trans.objectStore(this.name);
+            let req;
+            if (this.hasKey(key))
+                req = os.put(doc, key);
+            else if (upsert)
+                req = os.add(doc, key);
+            else {
+                subscriber.next();
+                subscriber.complete();
+            }
+            req.addEventListener('success', () => {
+                this._keys.add(key);
+                subscriber.next();
+                subscriber.complete();
             });
-        }));
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
-    delete(key, trans) {
+    /**
+     * Delete value by key name
+     * @param key [IDBValidKey] key name
+     * @returns [Observable]
+     */
+    delete(key) {
         if (!this._keys.has(key))
-            return EMPTY;
-        let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-        return trans$.pipe(switchMap(trans => {
-            if (!this.hasKey(key))
-                return of(trans);
-            return new Observable(subscriber => {
-                let req = trans.objectStore(this.name).delete(key);
-                if (trans) {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                    return;
-                }
-                req.addEventListener('success', () => {
-                    this._keys.delete(key);
-                    subscriber.next();
-                    subscriber.complete();
-                });
-                req.addEventListener('error', () => {
-                    subscriber.error(req.error);
-                    subscriber.complete();
-                });
+            return of();
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let req = trans.objectStore(this.name).delete(key);
+            req.addEventListener('success', () => {
+                this._keys.delete(key);
+                subscriber.next();
+                subscriber.complete();
             });
-        }));
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
-    clear(trans) {
+    /**
+     * Clear store
+     * @returns [Observable]
+     */
+    clear() {
         if (this._keys.size === 0)
-            return EMPTY;
-        let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-        return trans$.pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                let req = trans.objectStore(this.name).clear();
-                if (trans) {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                    return;
-                }
-                req.addEventListener('success', () => {
-                    this._keys.clear();
-                    subscriber.next();
-                    subscriber.complete();
-                });
-                req.addEventListener('error', () => {
-                    subscriber.error(req.error);
-                    subscriber.complete();
-                });
+            return of();
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let req = trans.objectStore(this.name).clear();
+            req.addEventListener('success', () => {
+                this._keys.clear();
+                subscriber.next();
+                subscriber.complete();
             });
-        }));
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
 }
 /**
@@ -367,76 +319,79 @@ export class ListStore extends Store {
      * @returns Observable\<T[]\>
      */
     getAll() {
-        return this._db.transaction([this.name], 'readonly').pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                let req = trans.objectStore(this.name).getAll();
-                req.addEventListener('success', () => {
-                    subscriber.next(req.result);
-                    subscriber.complete();
-                });
-                req.addEventListener('error', () => {
-                    subscriber.error(req.error);
-                    subscriber.complete();
-                });
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readonly');
+            let req = trans.objectStore(this.name).getAll();
+            req.addEventListener('success', () => {
+                subscriber.next(req.result);
+                subscriber.complete();
             });
-        }));
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
-    update(key, doc, upsert = true, trans) {
+    /**
+     * Update list store document
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] update value
+     * @param upsert [boolean?] create if not exists
+     * @returns [Observable]
+     */
+    update(key, doc, upsert = true) {
         doc[this.keyPath] = key;
-        return super.update(key, doc, upsert, trans);
+        return super.update(key, doc, upsert);
     }
-    updateMany(docs, upsert = true, trans) {
-        let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-        return trans$.pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                for (let doc of docs)
-                    if (this.hasKey(doc[this.keyPath]))
-                        trans.objectStore(this.name).put(doc);
-                    else if (upsert)
-                        trans.objectStore(this.name).add(doc);
-                if (trans) {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                    return;
-                }
-                trans.addEventListener('complete', () => {
-                    if (upsert)
-                        for (let doc of docs)
-                            this._keys.add(doc[this.keyPath]);
-                    subscriber.next();
-                    subscriber.complete();
-                });
-                trans.addEventListener('error', () => {
-                    subscriber.error(trans.error);
-                    subscriber.complete();
-                });
+    /**
+     * Update multiple values at ones
+     * @param doc [Partial\<T\[]>] update values array
+     * @param upsert [boolean?] create if not exists
+     * @returns [Observable]
+     */
+    updateMany(docs, upsert = true) {
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readwrite');
+            for (let doc of docs)
+                if (this.hasKey(doc[this.keyPath]))
+                    trans.objectStore(this.name).put(doc);
+                else if (upsert)
+                    trans.objectStore(this.name).add(doc);
+            trans.addEventListener('complete', () => {
+                if (upsert)
+                    for (let doc of docs)
+                        this._keys.add(doc[this.keyPath]);
+                subscriber.next();
+                subscriber.complete();
             });
-        }));
+            trans.addEventListener('error', () => {
+                subscriber.error(trans.error);
+                subscriber.complete();
+            });
+        });
     }
-    deleteMany(keys, trans) {
-        let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-        return trans$.pipe(switchMap(trans => {
-            return new Observable(subscriber => {
-                keys = keys.filter(key => !this.hasKey(key));
+    /**
+     * Delete multiple documents at once
+     * @param keys [Array\<IDBValidKey\>] array of key names
+     * @returns [Observable]
+     */
+    deleteMany(keys) {
+        return new Observable(subscriber => {
+            let trans = this._db.transaction([this.name], 'readwrite');
+            keys = keys.filter(key => !this.hasKey(key));
+            for (let key of keys)
+                trans.objectStore(this.name).delete(key);
+            trans.addEventListener('complete', () => {
                 for (let key of keys)
-                    trans.objectStore(this.name).delete(key);
-                if (trans) {
-                    subscriber.next(trans);
-                    subscriber.complete();
-                    return;
-                }
-                trans.addEventListener('complete', () => {
-                    for (let key of keys)
-                        this._keys.delete(key);
-                    subscriber.next();
-                    subscriber.complete();
-                });
-                trans.addEventListener('error', () => {
-                    subscriber.error(trans.error);
-                    subscriber.complete();
-                });
+                    this._keys.delete(key);
+                subscriber.next();
+                subscriber.complete();
             });
-        }));
+            trans.addEventListener('error', () => {
+                subscriber.error(trans.error);
+                subscriber.complete();
+            });
+        });
     }
 }
 //# sourceMappingURL=index.js.map

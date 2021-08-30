@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT
 
 import { BehaviorSubject, EMPTY, forkJoin, Observable, of, throwError } from "rxjs";
-import { distinctUntilChanged, filter, switchMap } from 'rxjs/operators';
+import { distinctUntilChanged, filter, map, switchMap } from 'rxjs/operators';
 
 /**
  * XDB create new database instance, manages connections status,
@@ -39,61 +39,34 @@ export abstract class XDB {
   // Protected Members
   // ---------------------------------------------------------------------------
   /** Db status behavior subject */
-  protected _openSub = new BehaviorSubject(null);
+  protected _openSub = new BehaviorSubject<boolean>(null);
   /** Current db instance */
   protected _db: IDBDatabase;
 
-  /**
-   * Db on upgrade listener
-   * @param version [number] Db version
-   */
-  protected abstract onUpgrade(version: number): void;
-
-  /**
-   * Db on error listener
-   * @param err Error
-   */
-  protected abstract onError(err: Error): void;
-
-  /** Db on block listener */
-  protected abstract onBlock(): void;
-
   /** Open Database connection */
   open() {
-    return new Observable<void>(subscriber => {
-      if (this.isOpen) {
-        subscriber.next();
-        subscriber.complete();
-        return;
-      }
+    if (this.isOpen) return;
 
-      let req = indexedDB.open(this.name, this.version);
+    let req = indexedDB.open(this.name, this.version);
 
-      req.addEventListener('success', () => {
-        this._db = req.result;
-        this._openSub.next(true);
-        subscriber.next();
-        subscriber.complete();
-      });
+    req.addEventListener('success', () => {
+      this._db = req.result;
+      this._openSub.next(true);
+    });
 
-      req.addEventListener('error', () => {
-        this._openSub.next(false);
-        this.onError(req.error);
-        subscriber.error(req.error);
-        subscriber.complete();
-      });
+    req.addEventListener('error', () => {
+      this._openSub.next(false);
+      this.onError(req.error);
+    });
 
-      req.addEventListener('blocked', () => {
-        this._openSub.next(false);
-        this.onBlock();
-        subscriber.error(new Error(`db ${self.name} is blocked`));
-        subscriber.complete();
-      });
+    req.addEventListener('blocked', () => {
+      this._openSub.next(false);
+      this.onBlock();
+    });
 
-      req.addEventListener('upgradeneeded', (e: IDBVersionChangeEvent) => {
-        this._db = req.result;
-        this.onUpgrade(e.oldVersion);
-      });
+    req.addEventListener('upgradeneeded', (e: IDBVersionChangeEvent) => {
+      this._db = req.result;
+      this.onUpgrade(e.oldVersion);
     });
   }
 
@@ -108,30 +81,28 @@ export abstract class XDB {
   protected drop() {
     this.close();
     XDB.Connections.delete(this.name);
-    return new Observable<void>(subscriber => {
-      let req = indexedDB.deleteDatabase(this.name);
+    let req = indexedDB.deleteDatabase(this.name);
 
-      req.addEventListener('success', () => {
-        subscriber.next();
-        subscriber.complete();
-      });
+    req.addEventListener('success', () => {
+      this._openSub.next(false);
+    });
 
-      req.addEventListener('error', () => {
-        subscriber.error(req.error);
-        subscriber.complete();
-      });
+    req.addEventListener('error', () => {
+      this.onError(req.error);
     });
   }
 
   /** Update database version */
   protected updateVersion(val: number) {
-    if (this._v === val) return of(null);
+    if (this._v === val)
+      return;
+
     if (this.isOpen) {
       this.close();
       this._v = val;
       return this.open();
     } else {
-      return of(null);
+      return;
     }
   }
 
@@ -141,9 +112,13 @@ export abstract class XDB {
    * @param keyPath [string?] To create Object store list with unique identifier
    */
   protected createStore(name: string, keyPath?: string): void {
-    if (this._db.objectStoreNames.contains(name)) return;
-    if (!keyPath) this._db.createObjectStore(name);
-    else this._db.createObjectStore(name, { keyPath: keyPath });
+    if (this._db.objectStoreNames.contains(name))
+      return;
+
+    if (!keyPath)
+      this._db.createObjectStore(name);
+    else
+      this._db.createObjectStore(name, { keyPath: keyPath });
   }
 
   /**
@@ -151,12 +126,29 @@ export abstract class XDB {
    * @param name [string] Store name
    */
   protected dropStore(name: string): void {
-    if (!this._db.objectStoreNames.contains(name)) return;
+    if (!this._db.objectStoreNames.contains(name))
+      return;
+      
     this._db.deleteObjectStore(name);
   }
 
   // Public Members
   // ---------------------------------------------------------------------------
+  /**
+   * Db on upgrade listener
+   * @param version [number] Db version
+   */
+  public abstract onUpgrade(version: number): void;
+
+  /**
+   * Db on error listener
+   * @param err Error
+   */
+  public abstract onError(err: Error): void;
+
+  /** Db on block listener */
+  public abstract onBlock(): void;
+
   /** Db status emitter */
   public readonly open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
 
@@ -170,36 +162,13 @@ export abstract class XDB {
    * Create new database transaction
    * @param storeNames 
    * @param mode 
-   * @returns [Observable<IDBTransaction>]
+   * @returns IDBTransaction
    */
   public transaction(storeNames: string[], mode?: IDBTransactionMode) {
-    return this.isOpen ? of(this._db.transaction(storeNames, mode)) : throwError(new Error(`${this.name} db is closed`));
-  }
+    if (this.isOpen)
+      return this._db.transaction(storeNames, mode);
 
-  /** Database transaction complete pipe */
-  public transComplete() {
-    return (source: Observable<IDBTransaction>) => {
-      return new Observable<void>(subscriber => {
-        return source.subscribe({
-          next(trans) {
-            trans.oncomplete = function () {
-              subscriber.next();
-              subscriber.complete();
-            }
-            trans.onerror = function () {
-              subscriber.error(trans.error);
-              subscriber.complete();
-            }
-            trans.onabort = function () {
-              subscriber.error('aborted');
-              subscriber.complete();
-            }
-          },
-          error(err) { subscriber.error(err); subscriber.complete() },
-          complete() { subscriber.complete() }
-        });
-      });
-    }
+    throw (new Error(`${this.name} db is closed`));
   }
 
   // Static Members
@@ -220,9 +189,10 @@ export abstract class XDB {
 
   /** Drop all databeses */
   static DropAll() {
-    let obs: Observable<void>[] = [];
-    for (let db of XDB.Connections.values()) obs.push(db.drop());
-    return forkJoin(obs);
+    for (let [name, db] of XDB.Connections.entries()) {
+      db.drop();
+      XDB.Connections.delete(name);
+    }
   }
 }
 
@@ -243,7 +213,10 @@ export class Store<T = any> {
     public readonly name: string
   ) {
     this._db.open$
-      .pipe(filter(open => open), switchMap(() => this._db.transaction([this.name], 'readonly')))
+      .pipe(
+        filter(open => open),
+        map(() => this._db.transaction([this.name], 'readonly'))
+      )
       .subscribe(trans => {
         let req = trans.objectStore(this.name).getAllKeys();
 
@@ -253,7 +226,7 @@ export class Store<T = any> {
         });
 
         req.addEventListener('error', () => {
-          throw req.error;
+          this._db.onError(req.error);
         });
       });
   }
@@ -264,6 +237,7 @@ export class Store<T = any> {
   protected _keys = new Set<IDBValidKey>();
   /** Object store ready status behavior subject */
   protected _readySub = new BehaviorSubject<boolean>(null);
+  /** Error listner  */
 
   // Public members
   // ---------------------------------------------------------------------------
@@ -291,22 +265,20 @@ export class Store<T = any> {
     if (!this._keys.has(key))
       return of(null);
 
-    return this._db.transaction([this.name], 'readonly')
-      .pipe(switchMap(trans => {
-        return new Observable<T>(subscriber => {
-          let req = trans.objectStore(this.name).get(key);
+    return new Observable<T>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readonly');
+      let req = trans.objectStore(this.name).get(key);
 
-          req.addEventListener('success', () => {
-            subscriber.next(req.result);
-            subscriber.complete();
-          });
+      req.addEventListener('success', () => {
+        subscriber.next(req.result);
+        subscriber.complete();
+      });
 
-          req.addEventListener('error', () => {
-            subscriber.error(req.error);
-            subscriber.complete();
-          });
-        });
-      }));
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
@@ -314,126 +286,92 @@ export class Store<T = any> {
    * @param key [IDBValidKey] key name
    * @param doc [Partial\<T\>] key value
    * @param upsert [boolean?] create if not exists
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public update<U = T>(key: IDBValidKey, doc: Partial<U>, upsert?: boolean): Observable<void>;
-  public update<U = T>(key: IDBValidKey, doc: Partial<U>, upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>;
-  public update<U = T>(key: IDBValidKey, doc: Partial<U>, upsert = true, trans?: IDBTransaction): Observable<any> {
+  public update(key: IDBValidKey, doc: Partial<T>, upsert = true): Observable<any> {
 
     if (!upsert && !this._keys.has(key))
-      return EMPTY;
+      return of();
 
-    let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
+    return new Observable<any>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let os = trans.objectStore(this.name);
+      let req: IDBRequest;
 
-    return trans$.pipe(switchMap(trans => {
-      return new Observable<any>(subscriber => {
-        let os = trans.objectStore(this.name);
-        let req: IDBRequest;
+      if (this.hasKey(key))
+        req = os.put(doc, key);
+      else if (upsert)
+        req = os.add(doc, key);
+      else {
+        subscriber.next();
+        subscriber.complete();
+      }
 
-        if (this.hasKey(key)) req = os.put(doc, key);
-        else if (upsert) req = os.add(doc, key);
-        else {
-          subscriber.next(trans);
-          subscriber.complete();
-        }
-
-        if (trans) {
-          subscriber.next(trans);
-          subscriber.complete();
-          return;
-        }
-
-        req.addEventListener('success', () => {
-          this._keys.add(key);
-          subscriber.next();
-          subscriber.complete();
-        });
-
-        req.addEventListener('error', () => {
-          subscriber.error(req.error);
-          subscriber.complete();
-        });
+      req.addEventListener('success', () => {
+        this._keys.add(key);
+        subscriber.next();
+        subscriber.complete();
       });
-    }));
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
    * Delete value by key name
    * @param key [IDBValidKey] key name
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public delete(key: IDBValidKey): Observable<void>;
-  public delete(key: IDBValidKey, trans?: IDBTransaction): Observable<IDBTransaction>;
-  public delete(key: IDBValidKey, trans?: IDBTransaction): Observable<any> {
+  public delete(key: IDBValidKey): Observable<void> {
 
     if (!this._keys.has(key))
-      return EMPTY;
+      return of();
 
-    let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
 
-    return trans$.pipe(switchMap(trans => {
-      if (!this.hasKey(key)) return of(trans);
-      return new Observable<any>(subscriber => {
-        let req = trans.objectStore(this.name).delete(key);
+    return new Observable<any>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let req = trans.objectStore(this.name).delete(key);
 
-        if (trans) {
-          subscriber.next(trans);
-          subscriber.complete();
-          return;
-        }
-
-        req.addEventListener('success', () => {
-          this._keys.delete(key);
-          subscriber.next();
-          subscriber.complete();
-        });
-
-        req.addEventListener('error', () => {
-          subscriber.error(req.error);
-          subscriber.complete();
-        });
+      req.addEventListener('success', () => {
+        this._keys.delete(key);
+        subscriber.next();
+        subscriber.complete();
       });
-    }));
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
    * Clear store
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public clear(): Observable<void>;
-  public clear(trans: IDBTransaction): Observable<IDBTransaction>;
-  public clear(trans?: IDBTransaction): Observable<any> {
+  public clear(): Observable<void> {
 
     if (this._keys.size === 0)
-      return EMPTY;
+      return of();
 
-    let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
+    return new Observable<any>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let req = trans.objectStore(this.name).clear();
 
-    return trans$.pipe(switchMap(trans => {
-      return new Observable<any>(subscriber => {
-        let req = trans.objectStore(this.name).clear();
-
-        if (trans) {
-          subscriber.next(trans);
-          subscriber.complete();
-          return;
-        }
-
-        req.addEventListener('success', () => {
-          this._keys.clear();
-          subscriber.next();
-          subscriber.complete();
-        });
-
-        req.addEventListener('error', () => {
-          subscriber.error(req.error);
-          subscriber.complete();
-        });
+      req.addEventListener('success', () => {
+        this._keys.clear();
+        subscriber.next();
+        subscriber.complete();
       });
-    }));
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
   }
 }
 
@@ -462,21 +400,20 @@ export class ListStore<T> extends Store<T> {
    * @returns Observable\<T[]\>
    */
   public getAll() {
-    return this._db.transaction([this.name], 'readonly').pipe(switchMap(trans => {
-      return new Observable<T[]>(subscriber => {
-        let req = trans.objectStore(this.name).getAll();
+    return new Observable<T[]>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readonly');
+      let req = trans.objectStore(this.name).getAll();
 
-        req.addEventListener('success', () => {
-          subscriber.next(req.result);
-          subscriber.complete();
-        });
-
-        req.addEventListener('error', () => {
-          subscriber.error(req.error);
-          subscriber.complete();
-        });
+      req.addEventListener('success', () => {
+        subscriber.next(req.result);
+        subscriber.complete();
       });
-    }));
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
@@ -484,85 +421,70 @@ export class ListStore<T> extends Store<T> {
    * @param key [IDBValidKey] key name
    * @param doc [Partial\<T\>] update value
    * @param upsert [boolean?] create if not exists
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<void>
-  public update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>
-  public update(key: IDBValidKey, doc: Partial<T>, upsert = true, trans?: IDBTransaction): Observable<any> {
+  public update(key: IDBValidKey, doc: Partial<T>, upsert = true): Observable<any> {
     (<any>doc)[<string>this.keyPath] = key;
-    return super.update(key, doc, upsert, trans);
+    return super.update(key, doc, upsert);
   }
 
   /**
    * Update multiple values at ones
    * @param doc [Partial\<T\[]>] update values array
    * @param upsert [boolean?] create if not exists
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public updateMany(docs: Partial<T>[], upsert?: boolean): Observable<void>;
-  public updateMany(docs: Partial<T>[], upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>;
-  public updateMany(docs: Partial<T>[], upsert = true, trans?: IDBTransaction): Observable<any> {
-    let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-    return trans$.pipe(switchMap(trans => {
-      return new Observable<any>(subscriber => {
-        for (let doc of docs)
-          if (this.hasKey((<any>doc)[<string>this.keyPath])) trans.objectStore(this.name).put(doc);
-          else if (upsert) trans.objectStore(this.name).add(doc);
+  public updateMany(docs: Partial<T>[], upsert = true): Observable<any> {
+    return new Observable<any>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readwrite');
 
-        if (trans) {
-          subscriber.next(trans);
-          subscriber.complete();
-          return;
-        }
+      for (let doc of docs)
+        if (this.hasKey((<any>doc)[<string>this.keyPath]))
+          trans.objectStore(this.name).put(doc);
+        else if (upsert)
+          trans.objectStore(this.name).add(doc);
 
-        trans.addEventListener('complete', () => {
-          if (upsert) for (let doc of docs) this._keys.add((<any>doc)[<string>this.keyPath]);
-          subscriber.next();
-          subscriber.complete();
-        });
+      trans.addEventListener('complete', () => {
+        if (upsert) for (let doc of docs)
+          this._keys.add((<any>doc)[<string>this.keyPath]);
 
-        trans.addEventListener('error', () => {
-          subscriber.error(trans.error);
-          subscriber.complete();
-        });
+        subscriber.next();
+        subscriber.complete();
       });
-    }));
+
+      trans.addEventListener('error', () => {
+        subscriber.error(trans.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
    * Delete multiple documents at once
    * @param keys [Array\<IDBValidKey\>] array of key names
-   * @param transaction [IDBTransaction?] db transaction to pipe current operation to
    * @returns [Observable]
    */
-  public deleteMany(keys: IDBValidKey[]): Observable<void>;
-  public deleteMany(keys: IDBValidKey[], trans?: IDBTransaction): Observable<IDBTransaction>;
-  public deleteMany(keys: IDBValidKey[], trans?: IDBTransaction): Observable<any> {
-    let trans$ = trans ? of(trans) : this._db.transaction([this.name], 'readwrite');
-    return trans$.pipe(switchMap(trans => {
-      return new Observable<any>(subscriber => {
-        keys = keys.filter(key => !this.hasKey(key));
-        for (let key of keys) trans.objectStore(this.name).delete(key);
+  public deleteMany(keys: IDBValidKey[]): Observable<void> {
+    return new Observable<any>(subscriber => {
+      let trans = this._db.transaction([this.name], 'readwrite');
 
-        if (trans) {
-          subscriber.next(trans);
-          subscriber.complete();
-          return;
-        }
+      keys = keys.filter(key => !this.hasKey(key));
 
-        trans.addEventListener('complete', () => {
-          for (let key of keys) this._keys.delete(key);
-          subscriber.next();
-          subscriber.complete();
-        });
+      for (let key of keys)
+        trans.objectStore(this.name).delete(key);
 
-        trans.addEventListener('error', () => {
-          subscriber.error(trans.error);
-          subscriber.complete();
-        });
+      trans.addEventListener('complete', () => {
+        for (let key of keys)
+          this._keys.delete(key);
+
+        subscriber.next();
+        subscriber.complete();
       });
-    }));
+
+      trans.addEventListener('error', () => {
+        subscriber.error(trans.error);
+        subscriber.complete();
+      });
+    });
   }
 }

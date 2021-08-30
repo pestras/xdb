@@ -13,29 +13,17 @@ export declare abstract class XDB {
      */
     constructor(name: string, _v?: number);
     /** Db status behavior subject */
-    protected _openSub: BehaviorSubject<any>;
+    protected _openSub: BehaviorSubject<boolean>;
     /** Current db instance */
     protected _db: IDBDatabase;
-    /**
-     * Db on upgrade listener
-     * @param version [number] Db version
-     */
-    protected abstract onUpgrade(version: number): void;
-    /**
-     * Db on error listener
-     * @param err Error
-     */
-    protected abstract onError(err: Error): void;
-    /** Db on block listener */
-    protected abstract onBlock(): void;
     /** Open Database connection */
-    open(): Observable<void>;
+    open(): void;
     /** Close db connection */
     protected close(): void;
     /** Drop database */
-    protected drop(): Observable<void>;
+    protected drop(): void;
     /** Update database version */
-    protected updateVersion(val: number): Observable<any>;
+    protected updateVersion(val: number): void;
     /**
      * Create new object store
      * @param name [string] Store name
@@ -47,21 +35,31 @@ export declare abstract class XDB {
      * @param name [string] Store name
      */
     protected dropStore(name: string): void;
+    /**
+     * Db on upgrade listener
+     * @param version [number] Db version
+     */
+    abstract onUpgrade(version: number): void;
+    /**
+     * Db on error listener
+     * @param err Error
+     */
+    abstract onError(err: Error): void;
+    /** Db on block listener */
+    abstract onBlock(): void;
     /** Db status emitter */
-    readonly open$: Observable<any>;
+    readonly open$: Observable<boolean>;
     /** Db is open getter */
-    get isOpen(): any;
+    get isOpen(): boolean;
     /** Db current version getter */
     get version(): number;
     /**
      * Create new database transaction
      * @param storeNames
      * @param mode
-     * @returns [Observable<IDBTransaction>]
+     * @returns IDBTransaction
      */
-    transaction(storeNames: string[], mode?: IDBTransactionMode): Observable<IDBTransaction>;
-    /** Database transaction complete pipe */
-    transComplete(): (source: Observable<IDBTransaction>) => Observable<void>;
+    transaction(storeNames: string[], mode?: IDBTransactionMode): IDBTransaction;
     /** Current indexedDb live connections */
     private static Connections;
     /** IndexedDb supported static getter */
@@ -72,7 +70,7 @@ export declare abstract class XDB {
      */
     static CloseAll(force?: boolean): void;
     /** Drop all databeses */
-    static DropAll(): Observable<void[]>;
+    static DropAll(): void;
 }
 /**
  * Key value indexedDb store
@@ -90,6 +88,7 @@ export declare class Store<T = any> {
     protected _keys: Set<IDBValidKey>;
     /** Object store ready status behavior subject */
     protected _readySub: BehaviorSubject<boolean>;
+    /** Error listner  */
     /** Ready status emitter */
     readonly ready$: Observable<boolean>;
     /** Ready status getter */
@@ -111,26 +110,20 @@ export declare class Store<T = any> {
      * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] key value
      * @param upsert [boolean?] create if not exists
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
-    update<U = T>(key: IDBValidKey, doc: Partial<U>, upsert?: boolean): Observable<void>;
-    update<U = T>(key: IDBValidKey, doc: Partial<U>, upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>;
+    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<any>;
     /**
      * Delete value by key name
      * @param key [IDBValidKey] key name
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
     delete(key: IDBValidKey): Observable<void>;
-    delete(key: IDBValidKey, trans?: IDBTransaction): Observable<IDBTransaction>;
     /**
      * Clear store
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
     clear(): Observable<void>;
-    clear(trans: IDBTransaction): Observable<IDBTransaction>;
 }
 /**
  * List store by key path
@@ -153,26 +146,20 @@ export declare class ListStore<T> extends Store<T> {
      * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] update value
      * @param upsert [boolean?] create if not exists
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
-    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<void>;
-    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>;
+    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<any>;
     /**
      * Update multiple values at ones
      * @param doc [Partial\<T\[]>] update values array
      * @param upsert [boolean?] create if not exists
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
-    updateMany(docs: Partial<T>[], upsert?: boolean): Observable<void>;
-    updateMany(docs: Partial<T>[], upsert?: boolean, trans?: IDBTransaction): Observable<IDBTransaction>;
+    updateMany(docs: Partial<T>[], upsert?: boolean): Observable<any>;
     /**
      * Delete multiple documents at once
      * @param keys [Array\<IDBValidKey\>] array of key names
-     * @param transaction [IDBTransaction?] db transaction to pipe current operation to
      * @returns [Observable]
      */
     deleteMany(keys: IDBValidKey[]): Observable<void>;
-    deleteMany(keys: IDBValidKey[], trans?: IDBTransaction): Observable<IDBTransaction>;
 }
