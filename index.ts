@@ -42,7 +42,7 @@ export abstract class XDB {
   protected _openSub = new BehaviorSubject<boolean>(null);
   /** Current db instance */
   protected _db: IDBDatabase;
-  
+
   /**
    * Db on upgrade listener
    * @param version [number] Db version
@@ -55,6 +55,12 @@ export abstract class XDB {
    */
   protected abstract onError(err: Error): void;
 
+  /** Db on drop listener */
+  protected onOpen?(): void;
+
+  /** Db on drop listener */
+  protected onDrop?(): void;
+
   /** Db on block listener */
   protected abstract onBlock(): void;
 
@@ -66,6 +72,7 @@ export abstract class XDB {
 
     req.addEventListener('success', () => {
       this._db = req.result;
+      this.onOpen && this.onOpen();
       this._openSub.next(true);
     });
 
@@ -95,10 +102,10 @@ export abstract class XDB {
   /** Drop database */
   protected drop() {
     this.close();
-    XDB.Connections.delete(this.name);
     let req = indexedDB.deleteDatabase(this.name);
 
     req.addEventListener('success', () => {
+      this.onDrop && this.onDrop();
       this._openSub.next(false);
     });
 
@@ -190,10 +197,8 @@ export abstract class XDB {
 
   /** Drop all databeses */
   static DropAll() {
-    for (let [name, db] of XDB.Connections.entries()) {
+    for (let db of XDB.Connections.values())
       db.drop();
-      XDB.Connections.delete(name);
-    }
   }
 }
 

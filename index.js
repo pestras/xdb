@@ -49,6 +49,7 @@ export class XDB {
         let req = indexedDB.open(this.name, this.version);
         req.addEventListener('success', () => {
             this._db = req.result;
+            this.onOpen && this.onOpen();
             this._openSub.next(true);
         });
         req.addEventListener('error', () => {
@@ -73,9 +74,9 @@ export class XDB {
     /** Drop database */
     drop() {
         this.close();
-        XDB.Connections.delete(this.name);
         let req = indexedDB.deleteDatabase(this.name);
         req.addEventListener('success', () => {
+            this.onDrop && this.onDrop();
             this._openSub.next(false);
         });
         req.addEventListener('error', () => {
@@ -145,10 +146,8 @@ export class XDB {
     }
     /** Drop all databeses */
     static DropAll() {
-        for (let [name, db] of XDB.Connections.entries()) {
+        for (let db of XDB.Connections.values())
             db.drop();
-            XDB.Connections.delete(name);
-        }
     }
 }
 // Static Members

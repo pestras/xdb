@@ -26,6 +26,10 @@ export declare abstract class XDB {
      * @param err Error
      */
     protected abstract onError(err: Error): void;
+    /** Db on drop listener */
+    protected onOpen?(): void;
+    /** Db on drop listener */
+    protected onDrop?(): void;
     /** Db on block listener */
     protected abstract onBlock(): void;
     /** Open Database connection */
