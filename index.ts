@@ -252,34 +252,6 @@ export class Store<T = any> {
    * @param doc [Partial\<T\>] key value
    * @returns [Observable]
    */
-  public add(doc: Partial<T>): Observable<any> {
-    return new Observable<any>(subscriber => {
-      if (!this._db.isOpen) {
-        subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
-        return subscriber.complete();
-      }
-
-      let trans = this._db.transaction([this.name], 'readwrite');
-      let os = trans.objectStore(this.name);
-      let req = os.add(doc, this.name);
-
-      req.addEventListener('success', () => {
-        subscriber.next();
-        subscriber.complete();
-      });
-
-      req.addEventListener('error', () => {
-        subscriber.error(req.error);
-        subscriber.complete();
-      });
-    });
-  }
-
-  /**
-   * Update key value
-   * @param doc [Partial\<T\>] key value
-   * @returns [Observable]
-   */
   public update(doc: Partial<T>): Observable<any> {
     return new Observable<any>(subscriber => {
       if (!this._db.isOpen) {

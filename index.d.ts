@@ -98,12 +98,6 @@ export declare class Store<T = any> {
      * @param doc [Partial\<T\>] key value
      * @returns [Observable]
      */
-    add(doc: Partial<T>): Observable<any>;
-    /**
-     * Update key value
-     * @param doc [Partial\<T\>] key value
-     * @returns [Observable]
-     */
     update(doc: Partial<T>): Observable<any>;
     /**
      * Clear store
