@@ -88,27 +88,19 @@ export declare class Store<T = any> {
      * @param name [string] Store name
      */
     constructor(_db: XDB, name: string);
-    /** Object store fields */
-    protected _keys: Set<IDBValidKey>;
-    /** Object store ready status behavior subject */
-    protected _readySub: BehaviorSubject<boolean>;
-    /** Error listner  */
-    /** Ready status emitter */
-    readonly ready$: Observable<boolean>;
-    /** Ready status getter */
-    get ready(): boolean;
-    /**
-     * Check if key exists
-     * @param key [IDBValidKey] key name
-     * @returns
-     */
-    hasKey(key: IDBValidKey): boolean;
     /**
      * Get key value
      * @param key [IDBValidKey] key name
      * @returns Observable\<U\>
      */
-    get<U = T>(key: IDBValidKey): Observable<any>;
+    get(key: IDBValidKey): Observable<T>;
+    /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @returns [Observable]
+     */
+    add(key: IDBValidKey, doc: Partial<T>): Observable<any>;
     /**
      * Update key value
      * @param key [IDBValidKey] key name
@@ -116,7 +108,7 @@ export declare class Store<T = any> {
      * @param upsert [boolean?] create if not exists
      * @returns [Observable]
      */
-    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<any>;
+    update(key: IDBValidKey, doc: Partial<T>): Observable<any>;
     /**
      * Delete value by key name
      * @param key [IDBValidKey] key name
@@ -146,20 +138,17 @@ export declare class ListStore<T> extends Store<T> {
      */
     getAll(): Observable<T[]>;
     /**
-     * Update list store document
-     * @param key [IDBValidKey] key name
-     * @param doc [Partial\<T\>] update value
-     * @param upsert [boolean?] create if not exists
+     * Update multiple values at ones
+     * @param doc [Partial\<T\[]>] update values array
      * @returns [Observable]
      */
-    update(key: IDBValidKey, doc: Partial<T>, upsert?: boolean): Observable<any>;
+    addMany(docs: Partial<T>[]): Observable<any>;
     /**
      * Update multiple values at ones
      * @param doc [Partial\<T\[]>] update values array
-     * @param upsert [boolean?] create if not exists
      * @returns [Observable]
      */
-    updateMany(docs: Partial<T>[], upsert?: boolean): Observable<any>;
+    updateMany(docs: Partial<T>[]): Observable<any>;
     /**
      * Delete multiple documents at once
      * @param keys [Array\<IDBValidKey\>] array of key names

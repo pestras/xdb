@@ -150,7 +150,7 @@ export abstract class XDB {
   protected dropStore(name: string): void {
     if (!this._db.objectStoreNames.contains(name))
       return;
-      
+
     this._db.deleteObjectStore(name);
   }
 
@@ -217,61 +217,22 @@ export class Store<T = any> {
   constructor(
     protected _db: XDB,
     public readonly name: string
-  ) {
-    this._db.open$
-      .pipe(
-        filter(open => open),
-        map(() => this._db.transaction([this.name], 'readonly'))
-      )
-      .subscribe(trans => {
-        let req = trans.objectStore(this.name).getAllKeys();
-
-        req.addEventListener('success', () => {
-          this._keys = new Set(req.result);
-          this._readySub.next(true);
-        });
-
-        req.addEventListener('error', () => {
-          console.error(req.error);
-        });
-      });
-  }
-
-  // Protected members
-  // ---------------------------------------------------------------------------
-  /** Object store fields */
-  protected _keys = new Set<IDBValidKey>();
-  /** Object store ready status behavior subject */
-  protected _readySub = new BehaviorSubject<boolean>(null);
-  /** Error listner  */
+  ) { }
 
   // Public members
   // ---------------------------------------------------------------------------
-  /** Ready status emitter */
-  public readonly ready$ = this._readySub.pipe(filter(ready => typeof ready === 'boolean'), distinctUntilChanged());
-
-  /** Ready status getter */
-  public get ready() { return this._readySub.getValue(); }
-
-  /**
-   * Check if key exists
-   * @param key [IDBValidKey] key name
-   * @returns 
-   */
-  public hasKey(key: IDBValidKey) {
-    return this._keys.has(key);
-  }
-
   /**
    * Get key value
    * @param key [IDBValidKey] key name
    * @returns Observable\<U\>
    */
-  public get<U = T>(key: IDBValidKey) {
-    if (!this._keys.has(key))
-      return of(null);
-
+  public get(key: IDBValidKey) {    
     return new Observable<T>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot get, db is closed`));
+        return subscriber.complete();
+      }
+
       let trans = this._db.transaction([this.name], 'readonly');
       let req = trans.objectStore(this.name).get(key);
 
@@ -291,30 +252,50 @@ export class Store<T = any> {
    * Update key value
    * @param key [IDBValidKey] key name
    * @param doc [Partial\<T\>] key value
+   * @returns [Observable]
+   */
+  public add(key: IDBValidKey, doc: Partial<T>): Observable<any> {
+    return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
+        return subscriber.complete();
+      }
+      
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let os = trans.objectStore(this.name);
+      let req = os.add(doc, key);
+
+      req.addEventListener('success', () => {
+        subscriber.next();
+        subscriber.complete();
+      });
+
+      req.addEventListener('error', () => {
+        subscriber.error(req.error);
+        subscriber.complete();
+      });
+    });
+  }
+
+  /**
+   * Update key value
+   * @param key [IDBValidKey] key name
+   * @param doc [Partial\<T\>] key value
    * @param upsert [boolean?] create if not exists
    * @returns [Observable]
    */
-  public update(key: IDBValidKey, doc: Partial<T>, upsert = true): Observable<any> {
-
-    if (!upsert && !this._keys.has(key))
-      return of();
-
+  public update(key: IDBValidKey, doc: Partial<T>): Observable<any> {
     return new Observable<any>(subscriber => {
-      let trans = this._db.transaction([this.name], 'readwrite');
-      let os = trans.objectStore(this.name);
-      let req: IDBRequest;
-
-      if (this.hasKey(key))
-        req = os.put(doc, key);
-      else if (upsert)
-        req = os.add(doc, key);
-      else {
-        subscriber.next();
-        subscriber.complete();
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot update, db is closed`));
+        return subscriber.complete();
       }
 
+      let trans = this._db.transaction([this.name], 'readwrite');
+      let os = trans.objectStore(this.name);
+      let req = os.put(doc, key);
+
       req.addEventListener('success', () => {
-        this._keys.add(key);
         subscriber.next();
         subscriber.complete();
       });
@@ -332,17 +313,16 @@ export class Store<T = any> {
    * @returns [Observable]
    */
   public delete(key: IDBValidKey): Observable<void> {
-
-    if (!this._keys.has(key))
-      return of();
-
-
     return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot delete, db is closed`));
+        return subscriber.complete();
+      }
+
       let trans = this._db.transaction([this.name], 'readwrite');
       let req = trans.objectStore(this.name).delete(key);
 
       req.addEventListener('success', () => {
-        this._keys.delete(key);
         subscriber.next();
         subscriber.complete();
       });
@@ -359,16 +339,16 @@ export class Store<T = any> {
    * @returns [Observable]
    */
   public clear(): Observable<void> {
-
-    if (this._keys.size === 0)
-      return of();
-
     return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot clear, db is closed`));
+        return subscriber.complete();
+      }
+
       let trans = this._db.transaction([this.name], 'readwrite');
       let req = trans.objectStore(this.name).clear();
 
       req.addEventListener('success', () => {
-        this._keys.clear();
         subscriber.next();
         subscriber.complete();
       });
@@ -407,6 +387,11 @@ export class ListStore<T> extends Store<T> {
    */
   public getAll() {
     return new Observable<T[]>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot getAll, db is closed`));
+        return subscriber.complete();
+      }
+
       let trans = this._db.transaction([this.name], 'readonly');
       let req = trans.objectStore(this.name).getAll();
 
@@ -423,37 +408,52 @@ export class ListStore<T> extends Store<T> {
   }
 
   /**
-   * Update list store document
-   * @param key [IDBValidKey] key name
-   * @param doc [Partial\<T\>] update value
-   * @param upsert [boolean?] create if not exists
+   * Update multiple values at ones
+   * @param doc [Partial\<T\[]>] update values array
    * @returns [Observable]
    */
-  public update(key: IDBValidKey, doc: Partial<T>, upsert = true): Observable<any> {
-    (<any>doc)[<string>this.keyPath] = key;
-    return super.update(key, doc, upsert);
+  public addMany(docs: Partial<T>[]): Observable<any> {
+    return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot addMany, db is closed`));
+        return subscriber.complete();
+      }
+
+      let trans = this._db.transaction([this.name], 'readwrite');
+
+      for (let doc of docs)
+        trans.objectStore(this.name).add(doc);
+
+      trans.addEventListener('complete', () => {
+        subscriber.next();
+        subscriber.complete();
+      });
+
+      trans.addEventListener('error', () => {
+        subscriber.error(trans.error);
+        subscriber.complete();
+      });
+    });
   }
 
   /**
    * Update multiple values at ones
    * @param doc [Partial\<T\[]>] update values array
-   * @param upsert [boolean?] create if not exists
    * @returns [Observable]
    */
-  public updateMany(docs: Partial<T>[], upsert = true): Observable<any> {
+  public updateMany(docs: Partial<T>[]): Observable<any> {
     return new Observable<any>(subscriber => {
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot updateMany, db is closed`));
+        return subscriber.complete();
+      }
+
       let trans = this._db.transaction([this.name], 'readwrite');
 
       for (let doc of docs)
-        if (this.hasKey((<any>doc)[<string>this.keyPath]))
-          trans.objectStore(this.name).put(doc);
-        else if (upsert)
-          trans.objectStore(this.name).add(doc);
+        trans.objectStore(this.name).put(doc);
 
       trans.addEventListener('complete', () => {
-        if (upsert) for (let doc of docs)
-          this._keys.add((<any>doc)[<string>this.keyPath]);
-
         subscriber.next();
         subscriber.complete();
       });
@@ -472,17 +472,17 @@ export class ListStore<T> extends Store<T> {
    */
   public deleteMany(keys: IDBValidKey[]): Observable<void> {
     return new Observable<any>(subscriber => {
-      let trans = this._db.transaction([this.name], 'readwrite');
+      if (!this._db.isOpen) {
+        subscriber.error(new Error(`[${this.name} error]: cannot deleteMany, db is closed`));
+        return subscriber.complete();
+      }
 
-      keys = keys.filter(key => !this.hasKey(key));
+      let trans = this._db.transaction([this.name], 'readwrite');
 
       for (let key of keys)
         trans.objectStore(this.name).delete(key);
 
       trans.addEventListener('complete', () => {
-        for (let key of keys)
-          this._keys.delete(key);
-
         subscriber.next();
         subscriber.complete();
       });
