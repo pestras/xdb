@@ -90,31 +90,21 @@ export declare class Store<T = any> {
     constructor(_db: XDB, name: string);
     /**
      * Get key value
-     * @param key [IDBValidKey] key name
      * @returns Observable\<U\>
      */
-    get(key: IDBValidKey): Observable<T>;
+    get(): Observable<T>;
     /**
      * Update key value
-     * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] key value
      * @returns [Observable]
      */
-    add(key: IDBValidKey, doc: Partial<T>): Observable<any>;
+    add(doc: Partial<T>): Observable<any>;
     /**
      * Update key value
-     * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] key value
-     * @param upsert [boolean?] create if not exists
      * @returns [Observable]
      */
-    update(key: IDBValidKey, doc: Partial<T>): Observable<any>;
-    /**
-     * Delete value by key name
-     * @param key [IDBValidKey] key name
-     * @returns [Observable]
-     */
-    delete(key: IDBValidKey): Observable<void>;
+    update(doc: Partial<T>): Observable<any>;
     /**
      * Clear store
      * @returns [Observable]
@@ -124,7 +114,9 @@ export declare class Store<T = any> {
 /**
  * List store by key path
  */
-export declare class ListStore<T> extends Store<T> {
+export declare class ListStore<T> {
+    protected _db: XDB;
+    readonly name: string;
     readonly keyPath: IDBValidKey;
     /**
      * List Store constructor
@@ -133,10 +125,22 @@ export declare class ListStore<T> extends Store<T> {
      */
     constructor(_db: XDB, name: string, keyPath: IDBValidKey);
     /**
+     * Get key value
+     * @returns Observable\<U\>
+     */
+    get(key: IDBValidKey): Observable<T>;
+    /**
      * Get all valuse as array
      * @returns Observable\<T[]\>
      */
     getAll(): Observable<T[]>;
+    /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @returns [Observable]
+     */
+    add(key: IDBValidKey, doc: Partial<T>): Observable<any>;
     /**
      * Update multiple values at ones
      * @param doc [Partial\<T\[]>] update values array
@@ -144,11 +148,24 @@ export declare class ListStore<T> extends Store<T> {
      */
     addMany(docs: Partial<T>[]): Observable<any>;
     /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @returns [Observable]
+     */
+    update(key: IDBValidKey, doc: Partial<T>): Observable<any>;
+    /**
      * Update multiple values at ones
      * @param doc [Partial\<T\[]>] update values array
      * @returns [Observable]
      */
     updateMany(docs: Partial<T>[]): Observable<any>;
+    /**
+     * Delete value by key name
+     * @param key [IDBValidKey] key name
+     * @returns [Observable]
+     */
+    delete(key: IDBValidKey): Observable<void>;
     /**
      * Delete multiple documents at once
      * @param keys [Array\<IDBValidKey\>] array of key names

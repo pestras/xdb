@@ -173,17 +173,16 @@ export class Store {
     // ---------------------------------------------------------------------------
     /**
      * Get key value
-     * @param key [IDBValidKey] key name
      * @returns Observable\<U\>
      */
-    get(key) {
+    get() {
         return new Observable(subscriber => {
             if (!this._db.isOpen) {
                 subscriber.error(new Error(`[${this.name} error]: cannot get, db is closed`));
                 return subscriber.complete();
             }
             let trans = this._db.transaction([this.name], 'readonly');
-            let req = trans.objectStore(this.name).get(key);
+            let req = trans.objectStore(this.name).get(this.name);
             req.addEventListener('success', () => {
                 subscriber.next(req.result);
                 subscriber.complete();
@@ -196,11 +195,10 @@ export class Store {
     }
     /**
      * Update key value
-     * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] key value
      * @returns [Observable]
      */
-    add(key, doc) {
+    add(doc) {
         return new Observable(subscriber => {
             if (!this._db.isOpen) {
                 subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
@@ -208,7 +206,7 @@ export class Store {
             }
             let trans = this._db.transaction([this.name], 'readwrite');
             let os = trans.objectStore(this.name);
-            let req = os.add(doc, key);
+            let req = os.add(doc, this.name);
             req.addEventListener('success', () => {
                 subscriber.next();
                 subscriber.complete();
@@ -221,12 +219,10 @@ export class Store {
     }
     /**
      * Update key value
-     * @param key [IDBValidKey] key name
      * @param doc [Partial\<T\>] key value
-     * @param upsert [boolean?] create if not exists
      * @returns [Observable]
      */
-    update(key, doc) {
+    update(doc) {
         return new Observable(subscriber => {
             if (!this._db.isOpen) {
                 subscriber.error(new Error(`[${this.name} error]: cannot update, db is closed`));
@@ -234,30 +230,7 @@ export class Store {
             }
             let trans = this._db.transaction([this.name], 'readwrite');
             let os = trans.objectStore(this.name);
-            let req = os.put(doc, key);
-            req.addEventListener('success', () => {
-                subscriber.next();
-                subscriber.complete();
-            });
-            req.addEventListener('error', () => {
-                subscriber.error(req.error);
-                subscriber.complete();
-            });
-        });
-    }
-    /**
-     * Delete value by key name
-     * @param key [IDBValidKey] key name
-     * @returns [Observable]
-     */
-    delete(key) {
-        return new Observable(subscriber => {
-            if (!this._db.isOpen) {
-                subscriber.error(new Error(`[${this.name} error]: cannot delete, db is closed`));
-                return subscriber.complete();
-            }
-            let trans = this._db.transaction([this.name], 'readwrite');
-            let req = trans.objectStore(this.name).delete(key);
+            let req = os.put(doc, this.name);
             req.addEventListener('success', () => {
                 subscriber.next();
                 subscriber.complete();
@@ -294,7 +267,7 @@ export class Store {
 /**
  * List store by key path
  */
-export class ListStore extends Store {
+export class ListStore {
     // XDB Constructor
     // ---------------------------------------------------------------------------
     /**
@@ -303,8 +276,31 @@ export class ListStore extends Store {
      * @param name [string] Store name
      */
     constructor(_db, name, keyPath) {
-        super(_db, name);
+        this._db = _db;
+        this.name = name;
         this.keyPath = keyPath;
+    }
+    /**
+     * Get key value
+     * @returns Observable\<U\>
+     */
+    get(key) {
+        return new Observable(subscriber => {
+            if (!this._db.isOpen) {
+                subscriber.error(new Error(`[${this.name} error]: cannot get, db is closed`));
+                return subscriber.complete();
+            }
+            let trans = this._db.transaction([this.name], 'readonly');
+            let req = trans.objectStore(this.name).get(key);
+            req.addEventListener('success', () => {
+                subscriber.next(req.result);
+                subscriber.complete();
+            });
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
     }
     /**
      * Get all valuse as array
@@ -320,6 +316,31 @@ export class ListStore extends Store {
             let req = trans.objectStore(this.name).getAll();
             req.addEventListener('success', () => {
                 subscriber.next(req.result);
+                subscriber.complete();
+            });
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
+    }
+    /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @returns [Observable]
+     */
+    add(key, doc) {
+        return new Observable(subscriber => {
+            if (!this._db.isOpen) {
+                subscriber.error(new Error(`[${this.name} error]: cannot add, db is closed`));
+                return subscriber.complete();
+            }
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let os = trans.objectStore(this.name);
+            let req = os.add(doc, key);
+            req.addEventListener('success', () => {
+                subscriber.next();
                 subscriber.complete();
             });
             req.addEventListener('error', () => {
@@ -353,6 +374,31 @@ export class ListStore extends Store {
         });
     }
     /**
+     * Update key value
+     * @param key [IDBValidKey] key name
+     * @param doc [Partial\<T\>] key value
+     * @returns [Observable]
+     */
+    update(key, doc) {
+        return new Observable(subscriber => {
+            if (!this._db.isOpen) {
+                subscriber.error(new Error(`[${this.name} error]: cannot update, db is closed`));
+                return subscriber.complete();
+            }
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let os = trans.objectStore(this.name);
+            let req = os.put(doc, key);
+            req.addEventListener('success', () => {
+                subscriber.next();
+                subscriber.complete();
+            });
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
+                subscriber.complete();
+            });
+        });
+    }
+    /**
      * Update multiple values at ones
      * @param doc [Partial\<T\[]>] update values array
      * @returns [Observable]
@@ -372,6 +418,29 @@ export class ListStore extends Store {
             });
             trans.addEventListener('error', () => {
                 subscriber.error(trans.error);
+                subscriber.complete();
+            });
+        });
+    }
+    /**
+     * Delete value by key name
+     * @param key [IDBValidKey] key name
+     * @returns [Observable]
+     */
+    delete(key) {
+        return new Observable(subscriber => {
+            if (!this._db.isOpen) {
+                subscriber.error(new Error(`[${this.name} error]: cannot delete, db is closed`));
+                return subscriber.complete();
+            }
+            let trans = this._db.transaction([this.name], 'readwrite');
+            let req = trans.objectStore(this.name).delete(key);
+            req.addEventListener('success', () => {
+                subscriber.next();
+                subscriber.complete();
+            });
+            req.addEventListener('error', () => {
+                subscriber.error(req.error);
                 subscriber.complete();
             });
         });
