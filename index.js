@@ -23,6 +23,8 @@ export class XDB {
         // ---------------------------------------------------------------------------
         /** Db status behavior subject */
         this._openSub = new BehaviorSubject(null);
+        // Public Members
+        // ---------------------------------------------------------------------------
         /** Db status emitter */
         this.open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
         /** if indexedDb not supported throw error */
@@ -187,7 +189,7 @@ export class Store {
                 this._readySub.next(true);
             });
             req.addEventListener('error', () => {
-                this._db.onError(req.error);
+                console.error(req.error);
             });
         });
     }

@@ -42,6 +42,21 @@ export abstract class XDB {
   protected _openSub = new BehaviorSubject<boolean>(null);
   /** Current db instance */
   protected _db: IDBDatabase;
+  
+  /**
+   * Db on upgrade listener
+   * @param version [number] Db version
+   */
+  protected abstract onUpgrade(version: number): void;
+
+  /**
+   * Db on error listener
+   * @param err Error
+   */
+  protected abstract onError(err: Error): void;
+
+  /** Db on block listener */
+  protected abstract onBlock(): void;
 
   /** Open Database connection */
   open() {
@@ -134,20 +149,6 @@ export abstract class XDB {
 
   // Public Members
   // ---------------------------------------------------------------------------
-  /**
-   * Db on upgrade listener
-   * @param version [number] Db version
-   */
-  public abstract onUpgrade(version: number): void;
-
-  /**
-   * Db on error listener
-   * @param err Error
-   */
-  public abstract onError(err: Error): void;
-
-  /** Db on block listener */
-  public abstract onBlock(): void;
 
   /** Db status emitter */
   public readonly open$ = this._openSub.pipe(filter(open => typeof open === "boolean"), distinctUntilChanged());
@@ -226,7 +227,7 @@ export class Store<T = any> {
         });
 
         req.addEventListener('error', () => {
-          this._db.onError(req.error);
+          console.error(req.error);
         });
       });
   }

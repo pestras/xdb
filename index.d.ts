@@ -16,6 +16,18 @@ export declare abstract class XDB {
     protected _openSub: BehaviorSubject<boolean>;
     /** Current db instance */
     protected _db: IDBDatabase;
+    /**
+     * Db on upgrade listener
+     * @param version [number] Db version
+     */
+    protected abstract onUpgrade(version: number): void;
+    /**
+     * Db on error listener
+     * @param err Error
+     */
+    protected abstract onError(err: Error): void;
+    /** Db on block listener */
+    protected abstract onBlock(): void;
     /** Open Database connection */
     open(): void;
     /** Close db connection */
@@ -35,18 +47,6 @@ export declare abstract class XDB {
      * @param name [string] Store name
      */
     protected dropStore(name: string): void;
-    /**
-     * Db on upgrade listener
-     * @param version [number] Db version
-     */
-    abstract onUpgrade(version: number): void;
-    /**
-     * Db on error listener
-     * @param err Error
-     */
-    abstract onError(err: Error): void;
-    /** Db on block listener */
-    abstract onBlock(): void;
     /** Db status emitter */
     readonly open$: Observable<boolean>;
     /** Db is open getter */
